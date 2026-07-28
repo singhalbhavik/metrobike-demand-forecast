@@ -86,22 +86,24 @@ def test_rolling_no_leakage():
     assert pd.isna(df.loc[0, "rolling_mean_24h"])
 
 
-def test_split_preserves_temporal_order():
-    from src.data.splits import split_data
+def test_split_preserves_temporal_order(tmp_path, monkeypatch):
+    from src.data import splits
 
+    monkeypatch.setattr(splits, "_CONFIG_DIR", tmp_path)  # don't clobber the real config/splits.yaml
     df = build_full_grid(_demand(n_hours=100, n_stations=2))
     df = add_time_features(df)
-    train, val, test, _ = split_data(df, val_frac=0.15, test_frac=0.15)
+    train, val, test, _ = splits.split_data(df, val_frac=0.15, test_frac=0.15)
     assert train["hour_utc"].max() < val["hour_utc"].min()
     assert val["hour_utc"].max() < test["hour_utc"].min()
 
 
-def test_split_no_overlap():
-    from src.data.splits import split_data
+def test_split_no_overlap(tmp_path, monkeypatch):
+    from src.data import splits
 
+    monkeypatch.setattr(splits, "_CONFIG_DIR", tmp_path)  # don't clobber the real config/splits.yaml
     df = build_full_grid(_demand(n_hours=100, n_stations=2))
     df = add_time_features(df)
-    train, val, test, _ = split_data(df)
+    train, val, test, _ = splits.split_data(df)
     all_hours = set(df["hour_utc"].unique())
     train_h = set(train["hour_utc"].unique())
     val_h   = set(val["hour_utc"].unique())

@@ -12,4 +12,4 @@ PyTorch (LSTM), LangChain copilot, Docker. Venv at .venv, deps pinned in require
 - Strict time-based train/val/test splits — no shuffling time series, no future leakage
 - Every stage ends with: code runs end to end, results printed, committed to git
 - Never fabricate metrics; all numbers must come from actual runs
-- Keep queries cheap: use table partitioning filters, LIMIT while developing1
+- Keep queries cheap: use table partitioning filters, LIMIT while developing

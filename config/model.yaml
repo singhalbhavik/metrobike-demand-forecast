@@ -1,0 +1,19 @@
+# Stage 2 LSTM hyperparameters. Loaded by src/models/pipeline.py.
+
+# Sequence window
+seq_len: 24            # hours of lookback fed to the LSTM (daily rhythm)
+train_stride: 3        # subsample training windows every N hours (cuts redundant overlap)
+eval_stride: 1          # val/test evaluated at every hour (matches real deployment)
+
+# Model architecture
+hidden_size: 64
+num_layers: 1
+embedding_dim: 8        # station embedding size
+fc_hidden: 32
+
+# Training
+lr: 0.001
+batch_size: 512
+max_epochs: 15
+early_stopping_patience: 3
+seed: 0

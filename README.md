@@ -85,3 +85,56 @@ All tests exercise feature engineering logic offline — no BigQuery calls.
 - `01_explore.sql` — full table scan, runs once.
 - `02_hourly_demand.sql` — reads only two columns (`start_station_id`, `start_time`).
 - `03_weather.sql` — scoped to a single station and bounded by `_TABLE_SUFFIX` wildcard.
+
+---
+
+## Stage 2 — LSTM Forecasting Model
+
+A global PyTorch LSTM predicting next-hour demand per station, benchmarked against two
+zero-cost naive baselines already implicit in Stage 1's engineered features.
+
+### Design
+
+- **Hybrid sequence design**: the LSTM sees a 24h lookback window (captures daily rhythm:
+  demand, weather, hour/day-of-week cyclic encodings). Weekly-scale signal (`lag_168h`,
+  `rolling_mean_168h`) and the *target* hour's own calendar attributes (hour/day-of-week —
+  known in advance, since you always know what hour you're forecasting) are fed in as static
+  features at the FC head instead of extending the sequence to a full 7 days — LSTMs aren't
+  great at remembering 168 steps back, so the model gets that signal directly.
+- **No leakage**: windows are built from the full continuous per-station timeline (same
+  precedent as Stage 1's lag/rolling features) and assigned to train/val/test by their
+  *target* hour against `config/splits.yaml`'s boundaries. The scaler (mean/std, log1p first
+  for zero-heavy count columns) is fit on the train split only.
+- **Baselines**: naive persistence (`lag_1h`) and seasonal-naive (`lag_168h`), evaluated
+  directly from Stage 1's columns — no training needed.
+- **Memory**: windows are sliced lazily from compact per-station arrays at `__getitem__` time
+  rather than materialized upfront — with ~5M overlapping 24h windows, pre-stacking them would
+  duplicate the data ~24x, which doesn't fit comfortably on an 8GB laptop.
+
+### Run it
+
+```bash
+make train         # or: python -m src.models.pipeline
+```
+
+Runs entirely against the local Stage 1 parquet files — no BigQuery calls. Trains on Apple
+Silicon MPS if available, else CPU. Produces:
+
+```
+models/lstm_best.pt        best checkpoint (by val RMSE, gitignored)
+config/preprocessing.yaml  fitted scaler + station-id -> index map
+config/metrics.yaml        final val/test metrics for LSTM + both baselines, and per-epoch history
+```
+
+### Results
+
+From the committed `config/metrics.yaml` (2013-12 → 2024-06 data, 106 stations):
+
+| Model                       | Val RMSE | Val MAE | Test RMSE | Test MAE |
+|------------------------------|---------:|--------:|----------:|---------:|
+| **LSTM**                     |   0.7638 |  0.2943 |    0.7202 |   0.2782 |
+| Naive persistence (`lag_1h`) |   0.9938 |  0.3664 |    0.9352 |   0.3454 |
+| Seasonal naive (`lag_168h`)  |   1.0308 |  0.3765 |    0.9823 |   0.3555 |
+
+The LSTM beats naive persistence by ~23% RMSE / ~19% MAE on test, and seasonal-naive by ~27%
+RMSE — trained on Apple Silicon MPS, early-stopped at epoch 5 (best weights from epoch 2).
